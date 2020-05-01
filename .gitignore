@@ -1,3 +1,6 @@
+# Data files
+*.dat
+
 # Prerequisites
 *.d
 
