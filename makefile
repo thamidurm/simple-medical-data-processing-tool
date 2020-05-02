@@ -1,7 +1,7 @@
 CC=gcc
 
 all: 
-	$(CC) main.c 
+	$(CC)  main.c  
 debug:
 	$(CC) -g main.c
 clean:

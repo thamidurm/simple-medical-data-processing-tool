@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <time.h>
+#include "md5.h"
 
 #define MAX_ATTRIBUTE_SIZE 256
 #define MAX_ATTRIBUTE_COUNT 10
@@ -217,7 +218,7 @@ char *patient_info_to_string(PatientInfo *record, char *str)
 }
 
 char *id_to_string(Id *record, char* str){
-    sprintf(str, "$d;%d;%d;%d;%d;%d\n",
+    sprintf(str, "%d;%d;%d;%d;%d;%d;%d\n",
     ID_RECORD,
     0,
     record->last_user_id,
@@ -235,6 +236,7 @@ char *get_file_name(RecordType record_type)
     switch (record_type)
     {
     case USER_RECORD:
+    case ID_RECORD:
         file_name = CONFIG_FILE;
         break;
     }
@@ -254,134 +256,6 @@ FILE *open_file(RecordType record_type, char *mode)
 
     return file;
 }
-int get_last_id(RecordType record_type)
-{
-    int line = 1;
-    switch (record_type)
-    {
-    case USER_RECORD:
-        line = 1;
-        break;
-
-    default:
-        break;
-    }
-    FILE *file = fopen("ids.dat", "r");
-
-    int cur = 0;
-    int num;
-    while (cur != line)
-    {
-        char *buffer = NULL;
-        size_t len = 0;
-        getline(&buffer, &len, file);
-        num = atoi(buffer);
-        free(buffer);
-        cur++;
-    }
-    fclose(file);
-    return num;
-}
-
-void set_last_id(RecordType record_type, int new_id)
-{
-    int line = 1;
-    switch (record_type)
-    {
-    case USER_RECORD:
-        line = 1;
-        break;
-
-    default:
-        break;
-    }
-    FILE *file = fopen("ids.dat", "r");
-
-    int cur_line = 1;
-    char *buffer = NULL;
-    size_t len = 0;
-    char *content = NULL;
-    while (getline(&buffer, &len, file) != -1)
-    {
-        if (content != NULL)
-        {
-            if (cur_line == line)
-            {
-                char num[100];
-                sprintf(num, "%d\n", new_id);
-                content = realloc(content, sizeof(char) * (strlen(content) + strlen(num) + 1));
-                strcat(content, num);
-            }
-            else
-            {
-                content = realloc(content, sizeof(char) * (strlen(content) + strlen(buffer) + 1));
-                strcat(content, buffer);
-            }
-        }
-        else
-        {
-            if (cur_line == line)
-            {
-                char num[100];
-                sprintf(num, "%d\n", new_id);
-                content = num;
-            }
-            else
-            {
-                content = malloc(sizeof(char) * (strlen(buffer) + 1));
-                strcat(content, buffer);
-            }
-        }
-        cur_line++;
-    }
-    free(buffer);
-    fclose(file);
-
-    remove("ids.dat");
-
-    FILE *temp = fopen("ids.dat.tmp", "w");
-    fputs(content, temp);
-    fclose(temp);
-
-    rename("ids.dat.tmp", "ids.dat");
-    free(content);
-}
-
-void append_record(RecordType record_type, char *record)
-{
-    FILE *file = open_file(record_type, "a");
-    char record_init[2];
-    sprintf(record_init, "%d;", record_type);
-    fputs(record_init, file);
-    fputs(record, file);
-    fputs("\n", file);
-    int last_id = get_last_id(record_type);
-    set_last_id(record_type, last_id+1 );
-    fclose(file);
-}
-
-int next_token(char *string, char *token, int *current)
-{
-    int t = 0;
-    while (string[*current] != '\0')
-    {
-        if (string[*current] == ';' || string[*current] == '\n')
-        {
-            (*current)++;
-            token[t] = '\0';
-            token = realloc(token, sizeof(char) * (t + 1));
-            return 1;
-        }
-        else
-        {
-            token[t] = string[*current];
-            t++;
-        }
-        (*current)++;
-    }
-    return -1;
-}
-
 
 
 void *allocate_space_for_record(RecordType type)
@@ -397,6 +271,8 @@ void *allocate_space_for_record(RecordType type)
         return malloc(sizeof(Prescription));
     case SICKNESS_INFO_RECORD:
         return malloc(sizeof(SicknessInfo));
+    case ID_RECORD:
+        return malloc(sizeof(Id));
     default:
         printf("Error incorrect record type");
         exit(2);
@@ -507,19 +383,19 @@ void set_attribute_for_record(void *record, RecordType type, int attribute, char
         Id *ids = (Id *)record;
         switch (attribute)
         {
-        case 1:
+        case 2:
             ids->last_user_id= atoi(token);
             break;
-        case 2:
+        case 3:
             ids->last_patient_info_id= atoi(token);
             break;
-        case 3:
+        case 4:
             ids->last_sickness_info_id = atoi(token);
             break;
-        case 4:
+        case 5:
             ids->last_drug_prescription_id = atoi(token);
             break;
-        case 5:
+        case 6:
             ids->last_lab_test_prescription_id = atoi(token);
             break;
         }
@@ -530,6 +406,223 @@ void set_attribute_for_record(void *record, RecordType type, int attribute, char
         exit(2);
     }
 }
+
+
+int next_token(char *string, char *token, int *current)
+{
+    int t = 0;
+    while (string[*current] != '\0')
+    {
+        if (string[*current] == ';' || string[*current] == '\n')
+        {
+            (*current)++;
+            token[t] = '\0';
+            token = realloc(token, sizeof(char) * (t + 1));
+            return 1;
+        }
+        else
+        {
+            token[t] = string[*current];
+            t++;
+        }
+        (*current)++;
+    }
+    return -1;
+}
+
+
+
+void *find_single_record(RecordType record_type, int search_attribute, char *value)
+{
+
+    FILE *file = open_file(record_type, "r");
+
+    char *buffer = NULL;
+    size_t len = 0;
+    bool found = false;
+    void *current = allocate_space_for_record(record_type);
+    int token_start, attribute;
+    char *token = (char *)malloc(MAX_ATTRIBUTE_SIZE + 1);
+    bool correct_type;
+    while (getline(&buffer, &len, file) != -1)
+    {
+        token_start = 0;
+        attribute = 0;
+
+        while (next_token(buffer, token, &token_start) != -1)
+        {
+            if (attribute == 0)
+            {
+                if (atoi(token) != record_type)
+                    break;
+            }
+            // else
+            // {
+                if (attribute == search_attribute && strncmp(value, token, sizeof token) == 0)
+                {
+                    found = true;
+                }
+                set_attribute_for_record(current, record_type, attribute, token);
+            // }
+
+            attribute++;
+        }
+
+        if (found)
+        {
+            break;
+        }
+    }
+
+    if (buffer != NULL)
+        free(buffer);
+
+    if (token != NULL)
+        free(token);
+
+    fclose(file);
+
+    if (found)
+        return current;
+    else
+        return NULL;
+}
+
+
+// update_record
+void update_record(RecordType record_type, int id, char *new_row)
+{
+
+    FILE *file = open_file(record_type, "r");
+    char *buffer = NULL;
+    char *content = NULL;
+    char *token = (char *)malloc(MAX_ATTRIBUTE_SIZE + 1);
+    int start;
+    size_t len = 0;
+
+    while (getline(&buffer, &len, file) != -1)
+    {
+        start = 0;
+        if (next_token(buffer, token, &start) != -1)
+        {
+            if (atoi(token) == id)
+            {
+                // Space is needed for attributes, commas and the null byte
+                if (content == NULL)
+                {
+                    content = malloc((strlen(new_row) + 1) * sizeof(char));
+                    strcpy(content, new_row);
+                }
+                else
+                {
+                    content = realloc(content, (strlen(content) + strlen(new_row) + 1) * sizeof(char));
+                    strcat(content, new_row);
+                }
+            }
+            else
+            {
+
+                if (content == NULL)
+                {
+                    content = malloc((strlen(buffer) + 1) * sizeof(char));
+                    strcpy(content, buffer);
+                }
+                else
+                {
+                    content = realloc(content, (strlen(content) + strlen(buffer) + 1) * sizeof(char));
+                    strcat(content, buffer);
+                }
+            }
+        }
+    }
+    free(buffer);
+    fclose(file);
+
+    char temp_file_name[100];
+    strcpy(temp_file_name, get_file_name(record_type));
+    strcat(temp_file_name, ".tmp");
+
+    FILE *temp = fopen(temp_file_name, "w");
+    fputs(content, temp);
+    free(content);
+    fclose(temp);
+    remove(get_file_name(record_type));
+    rename(temp_file_name, get_file_name(record_type));
+}
+
+int get_last_id(RecordType type)
+{
+    Id* ids = (Id*)find_single_record(ID_RECORD, 0, "0");
+    int num;
+    switch (type)
+    {
+    case USER_RECORD:
+        num = ids->last_user_id;
+        break;
+    case PATIENT_INFO_RECORD:
+        num = ids->last_patient_info_id;
+        break;
+    case DRUG_PRESCRIPTION_RECORD:
+        num = ids->last_drug_prescription_id;
+        break;
+    case LAB_TEST_PRESCRIPTION_RECORD:
+        num = ids->last_lab_test_prescription_id;
+        break;
+    case SICKNESS_INFO_RECORD:
+        num = ids->last_drug_prescription_id;
+        break;
+    default:
+        printf("Error incorrect record type");
+        exit(2);
+        break;
+    }
+
+    return num;
+}
+
+void set_last_id(RecordType type, int new_id)
+{
+    char ids[MAX_RECORD_LENGTH];
+    Id* id = (Id*)find_single_record(ID_RECORD, 0, "0");
+
+    switch (type)
+    {
+    case USER_RECORD:
+        id->last_user_id=new_id;
+        break;
+    case PATIENT_INFO_RECORD:
+        id->last_patient_info_id = new_id;
+        break;
+    case DRUG_PRESCRIPTION_RECORD:
+        id->last_drug_prescription_id = new_id;
+        break;
+    case LAB_TEST_PRESCRIPTION_RECORD:
+        id->last_lab_test_prescription_id = new_id;
+        break;
+    case SICKNESS_INFO_RECORD:
+        id->last_drug_prescription_id = new_id;
+        break;
+    default:
+        printf("Error incorrect record type");
+        exit(2);
+        break;
+    }
+
+    id_to_string(id, ids);
+    update_record(ID_RECORD, 0, ids);
+}
+
+void append_record(RecordType record_type, char *record)
+{
+    int last_id = get_last_id(record_type);
+    FILE *file = open_file(record_type, "a");
+    fputs(record, file);
+    fclose(file);
+
+    set_last_id(record_type, last_id+1 );
+}
+
+
 
 size_t get_record_size(RecordType type)
 {
@@ -609,137 +702,31 @@ void *find_all_records(RecordType record_type, int search_attribute, char *value
         return NULL;
 }
 
-void *find_single_record(RecordType record_type, int search_attribute, char *value)
-{
-
-    FILE *file = open_file(record_type, "r");
-
-    char *buffer = NULL;
-    size_t len = 0;
-    bool found = false;
-    void *current = allocate_space_for_record(record_type);
-    int token_start, attribute;
-    char *token = (char *)malloc(MAX_ATTRIBUTE_SIZE + 1);
-    bool correct_type;
-    while (getline(&buffer, &len, file) != -1)
-    {
-        token_start = 0;
-        attribute = 0;
-
-        while (next_token(buffer, token, &token_start) != -1)
-        {
-            if (attribute == 0)
-            {
-                if (atoi(token) != record_type)
-                    break;
-            }
-            else
-            {
-                if (attribute == search_attribute && strncmp(value, token, sizeof token) == 0)
-                {
-                    found = true;
-                }
-                set_attribute_for_record(current, record_type, attribute, token);
-            }
-
-            attribute++;
-        }
-
-        if (found)
-        {
-            break;
-        }
-    }
-
-    if (buffer != NULL)
-        free(buffer);
-
-    if (token != NULL)
-        free(token);
-
-    fclose(file);
-
-    if (found)
-        return current;
-    else
-        return NULL;
-}
-
 // delete_record
 
-// update_record
-void update_record(RecordType record_type, int id, char *new_row)
-{
-
-    FILE *file = open_file(record_type, "r");
-    char *buffer = NULL;
-    char *content = NULL;
-    char *token = (char *)malloc(MAX_ATTRIBUTE_SIZE + 1);
-    int start;
-    size_t len = 0;
-
-    while (getline(&buffer, &len, file) != -1)
-    {
-        start = 0;
-        if (next_token(buffer, token, &start) != -1)
-        {
-            if (atoi(token) == id)
-            {
-                // Space is needed for attributes, commas and the null byte
-                char row[MAX_RECORD_LENGTH];
-                sprintf(row, "%s\n", new_row);
-                if (content == NULL)
-                {
-                    content = malloc((strlen(row) + 1) * sizeof(char));
-                    strcpy(content, row);
-                }
-                else
-                {
-                    content = realloc(content, (strlen(content) + strlen(row) + 1) * sizeof(char));
-                    strcat(content, row);
-                }
-            }
-            else
-            {
-
-                if (content == NULL)
-                {
-                    content = malloc((strlen(buffer) + 1) * sizeof(char));
-                    strcpy(content, buffer);
-                }
-                else
-                {
-                    content = realloc(content, (strlen(content) + strlen(buffer) + 1) * sizeof(char));
-                    strcat(content, buffer);
-                }
-            }
-        }
-    }
-    free(buffer);
-    fclose(file);
-
-    char temp_file_name[100];
-    strcpy(temp_file_name, get_file_name(record_type));
-    strcat(temp_file_name, ".tmp");
-
-    FILE *temp = fopen(temp_file_name, "w");
-    fputs(content, temp);
-    free(content);
-    fclose(temp);
-    remove(get_file_name(record_type));
-    rename(temp_file_name, get_file_name(record_type));
-}
 
 char *generate_hash(char *string)
 {
-    return string;
+    unsigned char digest[16];
+    MD5_CTX context;
+    MD5_Init(&context);
+    MD5_Update(&context, string, strlen(string));
+    MD5_Final(digest, &context);
+
+    char md5string[33];
+    for(int i = 0; i < 16; ++i)
+    sprintf(&md5string[i*2], "%02x", (unsigned int)digest[i]);
+
+    char* copy = malloc(33 * sizeof(char));
+    strcpy(copy, md5string);
+    return copy;
 }
 
 
 
 bool prompt_login()
 {
-    // set_last_id(USER_RECORD, 10);
+    
     char username[MAX_ATTRIBUTE_SIZE];
     char password[MAX_ATTRIBUTE_SIZE];
 
@@ -904,7 +891,7 @@ void add_user_action(){
 
         printf("password: ");
         scanf("%s", password);
-
+        
         printf("user type (0 - Patient, 1 - Hostpial Staff, 2- Doctor)\n: ");
         ;
    
@@ -929,10 +916,11 @@ void add_user_action(){
         char record[MAX_RECORD_LENGTH];
         User user;
         strcpy(user.username, username);
-        strcpy(user.password, password);
+        
+        strcpy(user.password, generate_hash(password));
         user.priviledge_level = priviledge_level;
         user.user_type = user_type;
-        user.id = get_last_id(USER_RECORD);
+        user.id = get_last_id(USER_RECORD) + 1;
         user_record_to_string(&user, record);
         append_record(USER_RECORD, record);
         printf("Record added successfully!\n");
@@ -980,7 +968,8 @@ void do_action(char c){
 
 int main()
 {
-    printf("Press Ctrl+C to exit\n\n");
+    printf("%sdsads", generate_hash("dasdasd"));
+    //printf("Press Ctrl+C to exit\n\n");
 
     while (!prompt_login());
     print_menu();
