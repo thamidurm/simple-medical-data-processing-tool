@@ -25,14 +25,13 @@
 
 #define DESCRIPTION_LENGTH 256
 
-
-typedef enum PriviledgeLevelEnum
+typedef enum PrivilegeLevelEnum
 {
     LEVEL1,
     LEVEL2,
     LEVEL3,
     LEVEL4
-} PriviledgeLevel;
+} PrivilegeLevel;
 
 typedef enum UserTypeEnum
 {
@@ -66,12 +65,13 @@ typedef struct UserStruct
     char username[100];
     char password[256];
     UserType user_type;
-    PriviledgeLevel priviledge_level;
+    PrivilegeLevel privilege_level;
 } User;
 
 typedef struct PatientInfoStruct
 {
     int id;
+    int user_id;
     char name[250];
     char address[250];
     char phone[20];
@@ -110,23 +110,21 @@ bool search(const char **array, char *item)
     return false;
 }
 
-
-User* current_user; 
-const char *level1_priviledges[5] = {
+User *current_user;
+const char *level1_privileges[5] = {
     "READ_SELF_PATIENT_RECORD",
     "READ_SELF_LAB_PRESCRIPTION_RECORD",
     "READ_SELF_MEDICINE_PRESCRIPTION_RECORD",
-    "READ_SELF_SICKNESS_INFO_RECORD"
-    };
+    "READ_SELF_SICKNESS_INFO_RECORD"};
 
-const char *level2_priviledges[5] = {
+const char *level2_privileges[5] = {
     "CREATE_PATIENT_RECORD",
     "READ_ANY_PATIENT_RECORD",
     "READ_ANY_LAB_PRESCRIPTION",
     "READ_ANY_MEDICINE_PRESCRIPTION_RECORD",
 };
 
-const char *level3_priviledges[6] = {
+const char *level3_privileges[6] = {
     "CREATE_SICKNESS_INFO_RECORD",
     "CREATE_PRESCRIPTION_RECORD",
     "READ_ANY_PATIENT_RECORD",
@@ -134,16 +132,16 @@ const char *level3_priviledges[6] = {
     "READ_ANY_MEDICINE_PRESCRIPTION_RECORD",
     "READ_ANY_SICKNESS_INFO_RECORD"};
 
-bool has_priviledge(PriviledgeLevel level, char *priviledge)
+bool has_privilege(PrivilegeLevel level, char *privilege)
 {
     switch (level)
     {
     case LEVEL1:
-        return search(level1_priviledges, priviledge);
+        return search(level1_privileges, privilege);
     case LEVEL2:
-        return search(level2_priviledges, priviledge);
+        return search(level2_privileges, privilege);
     case LEVEL3:
-        return search(level3_priviledges, priviledge);
+        return search(level3_privileges, privilege);
     case LEVEL4:
         return true;
     default:
@@ -151,7 +149,7 @@ bool has_priviledge(PriviledgeLevel level, char *priviledge)
     }
 }
 
-char *generate_priviledge_string(char *holder, RecordType type, char *action, char *owner)
+char *generate_privilege_string(char *holder, RecordType type, char *action, char *owner)
 {
     char *record_string;
 
@@ -189,7 +187,7 @@ char *user_record_to_string(User *record, char *str)
             record->username,
             record->password,
             record->user_type,
-            record->priviledge_level);
+            record->privilege_level);
     return str;
 }
 
@@ -206,9 +204,10 @@ char *prescription_to_string(Prescription *record, char *str, RecordType type)
 
 char *patient_info_to_string(PatientInfo *record, char *str)
 {
-    sprintf(str, "%d;%d;%s;%s;%s;%s;%d\n",
+    sprintf(str, "%d;%d;%d;%s;%s;%s;%s;%d\n",
             PATIENT_INFO_RECORD,
             record->id,
+            record->user_id,
             record->name,
             record->address,
             record->phone,
@@ -217,16 +216,16 @@ char *patient_info_to_string(PatientInfo *record, char *str)
     return str;
 }
 
-char *id_to_string(Id *record, char* str){
+char *id_to_string(Id *record, char *str)
+{
     sprintf(str, "%d;%d;%d;%d;%d;%d;%d\n",
-    ID_RECORD,
-    0,
-    record->last_user_id,
-    record->last_patient_info_id,
-    record->last_sickness_info_id,
-    record->last_drug_prescription_id,
-    record->last_lab_test_prescription_id
-    );
+            ID_RECORD,
+            0,
+            record->last_user_id,
+            record->last_patient_info_id,
+            record->last_sickness_info_id,
+            record->last_drug_prescription_id,
+            record->last_lab_test_prescription_id);
 }
 
 char *get_file_name(RecordType record_type)
@@ -256,7 +255,6 @@ FILE *open_file(RecordType record_type, char *mode)
 
     return file;
 }
-
 
 void *allocate_space_for_record(RecordType type)
 {
@@ -301,7 +299,7 @@ void set_attribute_for_record(void *record, RecordType type, int attribute, char
             user->user_type = atoi(token);
             break;
         case 5:
-            user->priviledge_level = atoi(token);
+            user->privilege_level = atoi(token);
             break;
         }
     }
@@ -315,18 +313,20 @@ void set_attribute_for_record(void *record, RecordType type, int attribute, char
             patient_info->id = atoi(token);
             break;
         case 2:
+            patient_info->user_id = atoi(token);
+        case 3:
             strcpy(patient_info->name, token);
             break;
-        case 3:
+        case 4:
             strcpy(patient_info->address, token);
             break;
-        case 4:
+        case 5:
             strcpy(patient_info->phone, token);
             break;
-        case 5:
+        case 6:
             strcpy(patient_info->gender, token);
             break;
-        case 6:
+        case 7:
             patient_info->birth_year = atoi(token);
             break;
         }
@@ -384,10 +384,10 @@ void set_attribute_for_record(void *record, RecordType type, int attribute, char
         switch (attribute)
         {
         case 2:
-            ids->last_user_id= atoi(token);
+            ids->last_user_id = atoi(token);
             break;
         case 3:
-            ids->last_patient_info_id= atoi(token);
+            ids->last_patient_info_id = atoi(token);
             break;
         case 4:
             ids->last_sickness_info_id = atoi(token);
@@ -407,7 +407,6 @@ void set_attribute_for_record(void *record, RecordType type, int attribute, char
     }
 }
 
-
 int next_token(char *string, char *token, int *current)
 {
     int t = 0;
@@ -417,7 +416,6 @@ int next_token(char *string, char *token, int *current)
         {
             (*current)++;
             token[t] = '\0';
-            token = realloc(token, sizeof(char) * (t + 1));
             return 1;
         }
         else
@@ -430,8 +428,6 @@ int next_token(char *string, char *token, int *current)
     return -1;
 }
 
-
-
 void *find_single_record(RecordType record_type, int search_attribute, char *value)
 {
 
@@ -442,7 +438,7 @@ void *find_single_record(RecordType record_type, int search_attribute, char *val
     bool found = false;
     void *current = allocate_space_for_record(record_type);
     int token_start, attribute;
-    char *token = (char *)malloc(MAX_ATTRIBUTE_SIZE + 1);
+    char token[MAX_ATTRIBUTE_SIZE];
     bool correct_type;
     while (getline(&buffer, &len, file) != -1)
     {
@@ -458,11 +454,11 @@ void *find_single_record(RecordType record_type, int search_attribute, char *val
             }
             // else
             // {
-                if (attribute == search_attribute && strncmp(value, token, sizeof token) == 0)
-                {
-                    found = true;
-                }
-                set_attribute_for_record(current, record_type, attribute, token);
+            if (attribute == search_attribute && strncmp(value, token, sizeof token) == 0)
+            {
+                found = true;
+            }
+            set_attribute_for_record(current, record_type, attribute, token);
             // }
 
             attribute++;
@@ -477,8 +473,8 @@ void *find_single_record(RecordType record_type, int search_attribute, char *val
     if (buffer != NULL)
         free(buffer);
 
-    if (token != NULL)
-        free(token);
+    // if (token != NULL)
+    //     free(token);
 
     fclose(file);
 
@@ -487,7 +483,6 @@ void *find_single_record(RecordType record_type, int search_attribute, char *val
     else
         return NULL;
 }
-
 
 // update_record
 void update_record(RecordType record_type, int id, char *new_row)
@@ -552,7 +547,7 @@ void update_record(RecordType record_type, int id, char *new_row)
 
 int get_last_id(RecordType type)
 {
-    Id* ids = (Id*)find_single_record(ID_RECORD, 0, "0");
+    Id *ids = (Id *)find_single_record(ID_RECORD, 0, "0");
     int num;
     switch (type)
     {
@@ -583,12 +578,12 @@ int get_last_id(RecordType type)
 void set_last_id(RecordType type, int new_id)
 {
     char ids[MAX_RECORD_LENGTH];
-    Id* id = (Id*)find_single_record(ID_RECORD, 0, "0");
+    Id *id = (Id *)find_single_record(ID_RECORD, 0, "0");
 
     switch (type)
     {
     case USER_RECORD:
-        id->last_user_id=new_id;
+        id->last_user_id = new_id;
         break;
     case PATIENT_INFO_RECORD:
         id->last_patient_info_id = new_id;
@@ -619,10 +614,8 @@ void append_record(RecordType record_type, char *record)
     fputs(record, file);
     fclose(file);
 
-    set_last_id(record_type, last_id+1 );
+    set_last_id(record_type, last_id + 1);
 }
-
-
 
 size_t get_record_size(RecordType type)
 {
@@ -670,15 +663,14 @@ void *find_all_records(RecordType record_type, int search_attribute, char *value
                 if (atoi(token) != record_type)
                     break;
             }
-           
-                if (attribute == search_attribute && strcmp(value, token) == 0)
-                {
-                    printf("Found!\n");
-                    found = true;
-                }
 
-                set_attribute_for_record(current, record_type, attribute, token);
-            
+            if (attribute == search_attribute && strcmp(value, token) == 0)
+            {
+                printf("Found!\n");
+                found = true;
+            }
+
+            set_attribute_for_record(current, record_type, attribute, token);
 
             attribute++;
         }
@@ -702,8 +694,6 @@ void *find_all_records(RecordType record_type, int search_attribute, char *value
         return NULL;
 }
 
-// delete_record
-
 
 char *generate_hash(char *string)
 {
@@ -714,19 +704,17 @@ char *generate_hash(char *string)
     MD5_Final(digest, &context);
 
     char md5string[33];
-    for(int i = 0; i < 16; ++i)
-    sprintf(&md5string[i*2], "%02x", (unsigned int)digest[i]);
+    for (int i = 0; i < 16; ++i)
+        sprintf(&md5string[i * 2], "%02x", (unsigned int)digest[i]);
 
-    char* copy = malloc(33 * sizeof(char));
+    char *copy = malloc(33 * sizeof(char));
     strcpy(copy, md5string);
     return copy;
 }
 
-
-
 bool prompt_login()
 {
-    
+
     char username[MAX_ATTRIBUTE_SIZE];
     char password[MAX_ATTRIBUTE_SIZE];
 
@@ -735,6 +723,7 @@ bool prompt_login()
 
     printf("Password: ");
     scanf("%s", password);
+
     User *user = (User *)find_single_record(USER_RECORD, 2, username);
 
     if (user != NULL)
@@ -759,7 +748,8 @@ bool prompt_login()
     return false;
 }
 
-void print_menu(){
+void print_menu()
+{
     printf("a - Add User (Admin Only)\n");
     printf("b - Add Patient (Staff Only)\n");
     printf("c - Add Sickness Info Record (Doctors Only)\n");
@@ -768,117 +758,134 @@ void print_menu(){
     printf("f - View Patient Info (Patients, Clerks and Doctors Only)\n");
     printf("g - View Patient Drug Prescription Records (Patients (Self),Staff and Doctors Only)\n");
     printf("h - View Patient Lab Test Prescription Records (Patients(Self), Staff and Doctors Only)\n");
-    printf("i - View Sickness Info Record (Patients(Self) and Doctors Only)\n\n");    
+    printf("i - View Sickness Info Record (Patients(Self) and Doctors Only)\n\n");
 }
 
-void view_sickness_info_action(){
+void view_sickness_info_action()
+{
     printf("Enter Patient Id: ");
     int id;
 
     scanf("%d", &id);
 
     if (
-        (id == current_user->id && has_priviledge(current_user->priviledge_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
-        has_priviledge(current_user->priviledge_level, "READ_ANY_PATIENT_INFO_RECORD")){
-
-
-    }else{
+        (id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
+        has_privilege(current_user->privilege_level, "READ_ANY_PATIENT_INFO_RECORD"))
+    {
+    }
+    else
+    {
         printf("You do not have permission for this action\n");
     }
 }
 
-void view_lab_test_prescription_action(){
-      printf("Enter Patient Id: ");
-    int id;
-
-    scanf("%d", &id);
-
-    if (
-        (id == current_user->id && has_priviledge(current_user->priviledge_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
-        has_priviledge(current_user->priviledge_level, "READ_ANY_PATIENT_INFO_RECORD")){
-
-
-    }else{
-        printf("You do not have permission for this action\n");
-    }
-}
-
-void view_drug_prescription_action(){
+void view_lab_test_prescription_action()
+{
     printf("Enter Patient Id: ");
     int id;
 
     scanf("%d", &id);
 
     if (
-        (id == current_user->id && has_priviledge(current_user->priviledge_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
-        has_priviledge(current_user->priviledge_level, "READ_ANY_PATIENT_INFO_RECORD")){
-
-
-    }else{
+        (id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
+        has_privilege(current_user->privilege_level, "READ_ANY_PATIENT_INFO_RECORD"))
+    {
+    }
+    else
+    {
         printf("You do not have permission for this action\n");
     }
 }
 
-
-void view_patient_info_action(){
+void view_drug_prescription_action()
+{
     printf("Enter Patient Id: ");
     int id;
 
     scanf("%d", &id);
 
     if (
-        (id == current_user->id && has_priviledge(current_user->priviledge_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
-        has_priviledge(current_user->priviledge_level, "READ_ANY_PATIENT_INFO_RECORD")){
-
-
-    }else{
+        (id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
+        has_privilege(current_user->privilege_level, "READ_ANY_PATIENT_INFO_RECORD"))
+    {
+    }
+    else
+    {
         printf("You do not have permission for this action\n");
     }
 }
 
-void add_lab_test_prescription_action(){
-    if(has_priviledge(current_user->priviledge_level, "CREATE_LAB_TEST_PRESCRIPTION_RECORD")){
+void view_patient_info_action()
+{
+    printf("Enter Patient Id: ");
+    int id;
 
+    scanf("%d", &id);
 
-    }else{
+    if (
+        (id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
+        has_privilege(current_user->privilege_level, "READ_ANY_PATIENT_INFO_RECORD"))
+    {
+    }
+    else
+    {
         printf("You do not have permission for this action\n");
     }
 }
 
-void add_drug_prescription_action(){
-    if(has_priviledge(current_user->priviledge_level, "CREATE_DRUG_PRESCRIPTION_RECORD")){
-
-
-    }else{
+void add_lab_test_prescription_action()
+{
+    if (has_privilege(current_user->privilege_level, "CREATE_LAB_TEST_PRESCRIPTION_RECORD"))
+    {
+    }
+    else
+    {
         printf("You do not have permission for this action\n");
     }
 }
 
-void add_sickness_info_action(){
-    
-    if(has_priviledge(current_user->priviledge_level, "CREATE_SICKNESS_INFO_RECORD")){
-
-
-    }else{
+void add_drug_prescription_action()
+{
+    if (has_privilege(current_user->privilege_level, "CREATE_DRUG_PRESCRIPTION_RECORD"))
+    {
+    }
+    else
+    {
         printf("You do not have permission for this action\n");
     }
 }
 
-void add_patient_action(){
-    if(has_priviledge(current_user->priviledge_level, "CREATE_PATIENT_RECORD")){
+void add_sickness_info_action()
+{
 
-
-    }else{
+    if (has_privilege(current_user->privilege_level, "CREATE_SICKNESS_INFO_RECORD"))
+    {
+    }
+    else
+    {
         printf("You do not have permission for this action\n");
     }
 }
 
-void add_user_action(){
-    if (has_priviledge(current_user->priviledge_level, "CREATE_USER_RECORD")){
+void add_patient_action()
+{
+    if (has_privilege(current_user->privilege_level, "CREATE_PATIENT_RECORD"))
+    {
+    }
+    else
+    {
+        printf("You do not have permission for this action\n");
+    }
+}
+
+void add_user_action()
+{
+    if (has_privilege(current_user->privilege_level, "CREATE_USER_RECORD"))
+    {
         char username[MAX_ATTRIBUTE_SIZE];
         char password[MAX_ATTRIBUTE_SIZE];
         int user_type;
-        int priviledge_level; 
+        int privilege_level;
 
         printf("username: ");
         scanf("%s", username);
@@ -891,52 +898,52 @@ void add_user_action(){
 
         printf("password: ");
         scanf("%s", password);
-        
-        printf("user type (0 - Patient, 1 - Hostpial Staff, 2- Doctor)\n: ");
-        ;
-   
 
-        if ((scanf("%i", &user_type) == 0) ||user_type < 0 || user_type> 2)
+        printf("user type (0 - Patient, 1 - Hostpial Staff, 2- Doctor)\n: ");
+        
+
+        if ((scanf("%i", &user_type) == 0) || user_type < 0 || user_type > 2)
         {
             printf("\nInvalid user type\n");
             return;
         }
-        
 
-        printf("priviledge level (1 - Level1, 2 - Level2, 3 - Level3, 4 - Level4)\n: ");
+        printf("privilege level (1 - Level1, 2 - Level2, 3 - Level3, 4 - Level4)\n: ");
 
-
-        if ( scanf("%d", &priviledge_level) == 0 || priviledge_level < 1 || priviledge_level > 4)
+        if (scanf("%d", &privilege_level) == 0 || privilege_level < 1 || privilege_level > 4)
         {
-            printf("\nInvalid priviledge level\n");
+            printf("\nInvalid privilege level\n");
             return;
         }
-        priviledge_level--;
+        privilege_level--;
 
         char record[MAX_RECORD_LENGTH];
         User user;
         strcpy(user.username, username);
-        
+
         strcpy(user.password, generate_hash(password));
-        user.priviledge_level = priviledge_level;
+        user.privilege_level = privilege_level;
         user.user_type = user_type;
         user.id = get_last_id(USER_RECORD) + 1;
         user_record_to_string(&user, record);
         append_record(USER_RECORD, record);
         printf("Record added successfully!\n");
-    }else{
+    }
+    else
+    {
         printf("You do not have permission for this action\n");
     }
-} 
+}
 
-void do_action(char c){
+void do_action(char c)
+{
     switch (c)
     {
     case 'a':
         add_user_action();
         break;
     case 'b':
-        add_patient_action();    
+        add_patient_action();
         break;
     case 'c':
         add_sickness_info_action();
@@ -959,24 +966,21 @@ void do_action(char c){
     case 'i':
         view_sickness_info_action();
         break;
-    
+
     default:
         break;
     }
 }
 
-
 int main()
 {
-    printf("%sdsads", generate_hash("dasdasd"));
-    //printf("Press Ctrl+C to exit\n\n");
-
-    while (!prompt_login());
+    while (!prompt_login())
+        ;
     print_menu();
     char c;
     do
     {
-        
+
         scanf("%c", &c);
         if (c != 'q')
             do_action(c);

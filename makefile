@@ -1,8 +1,8 @@
 CC=gcc
 
 all: 
-	$(CC)  main.c  
+	$(CC) -Wall main.c  -lcrypto
 debug:
-	$(CC) -g main.c
+	$(CC) -g main.c -lcrypto
 clean:
 	rm -f *.out *.o
