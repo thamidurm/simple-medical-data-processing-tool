@@ -22,6 +22,7 @@
 #define PERMISSION_SIZE 100
 #define MAX_RECORD_LENGTH ((MAX_ATTRIBUTE_SIZE + 1) * MAX_ATTRIBUTE_COUNT)
 #define CONFIG_FILE "config.dat"
+#define DATA_FILE "data.dat";
 
 #define DESCRIPTION_LENGTH 256
 
@@ -62,8 +63,8 @@ typedef struct IdStruct
 typedef struct UserStruct
 {
     int id;
-    char username[100];
-    char password[256];
+    char username[MAX_ATTRIBUTE_SIZE];
+    char password[MAX_ATTRIBUTE_SIZE];
     UserType user_type;
     PrivilegeLevel privilege_level;
 } User;
@@ -72,10 +73,10 @@ typedef struct PatientInfoStruct
 {
     int id;
     int user_id;
-    char name[250];
-    char address[250];
+    char name[MAX_ATTRIBUTE_SIZE];
+    char address[MAX_ATTRIBUTE_SIZE];
     char phone[20];
-    char gender[5];
+    char gender;
     int birth_year;
 } PatientInfo;
 
@@ -114,14 +115,14 @@ User *current_user;
 const char *level1_privileges[5] = {
     "READ_SELF_PATIENT_RECORD",
     "READ_SELF_LAB_PRESCRIPTION_RECORD",
-    "READ_SELF_MEDICINE_PRESCRIPTION_RECORD",
+    "READ_SELF_DRUG_PRESCRIPTION_RECORD",
     "READ_SELF_SICKNESS_INFO_RECORD"};
 
 const char *level2_privileges[5] = {
     "CREATE_PATIENT_RECORD",
     "READ_ANY_PATIENT_RECORD",
-    "READ_ANY_LAB_PRESCRIPTION",
-    "READ_ANY_MEDICINE_PRESCRIPTION_RECORD",
+    "READ_ANY_LAB_PRESCRIPTION_RECORD",
+    "READ_ANY_DRUG_PRESCRIPTION_RECORD",
 };
 
 const char *level3_privileges[6] = {
@@ -129,7 +130,7 @@ const char *level3_privileges[6] = {
     "CREATE_PRESCRIPTION_RECORD",
     "READ_ANY_PATIENT_RECORD",
     "READ_ANY_LAB_PRESCRIPTION_RECORD",
-    "READ_ANY_MEDICINE_PRESCRIPTION_RECORD",
+    "READ_ANY_DRUG_PRESCRIPTION_RECORD",
     "READ_ANY_SICKNESS_INFO_RECORD"};
 
 bool has_privilege(PrivilegeLevel level, char *privilege)
@@ -204,7 +205,7 @@ char *prescription_to_string(Prescription *record, char *str, RecordType type)
 
 char *patient_info_to_string(PatientInfo *record, char *str)
 {
-    sprintf(str, "%d;%d;%d;%s;%s;%s;%s;%d\n",
+    sprintf(str, "%d;%d;%d;%s;%s;%s;%c;%d\n",
             PATIENT_INFO_RECORD,
             record->id,
             record->user_id,
@@ -213,6 +214,18 @@ char *patient_info_to_string(PatientInfo *record, char *str)
             record->phone,
             record->gender,
             record->birth_year);
+    return str;
+}
+
+char *sickness_info_to_string(SicknessInfo *record, char *str)
+{
+    sprintf(str, "%d;%d;%d;%d;%s;%s\n",
+            SICKNESS_INFO_RECORD,
+            record->id,
+            record->patient_id,
+            record->doctor_id,
+            record->datetime,
+            record->description);
     return str;
 }
 
@@ -238,6 +251,11 @@ char *get_file_name(RecordType record_type)
     case ID_RECORD:
         file_name = CONFIG_FILE;
         break;
+    case PATIENT_INFO_RECORD:
+    case SICKNESS_INFO_RECORD:
+    case LAB_TEST_PRESCRIPTION_RECORD:
+    case DRUG_PRESCRIPTION_RECORD:
+        file_name = DATA_FILE;
     }
     return file_name;
 }
@@ -324,7 +342,7 @@ void set_attribute_for_record(void *record, RecordType type, int attribute, char
             strcpy(patient_info->phone, token);
             break;
         case 6:
-            strcpy(patient_info->gender, token);
+            patient_info->gender = (char)token[0];
             break;
         case 7:
             patient_info->birth_year = atoi(token);
@@ -666,7 +684,6 @@ void *find_all_records(RecordType record_type, int search_attribute, char *value
 
             if (attribute == search_attribute && strcmp(value, token) == 0)
             {
-                printf("Found!\n");
                 found = true;
             }
 
@@ -693,7 +710,6 @@ void *find_all_records(RecordType record_type, int search_attribute, char *value
     else
         return NULL;
 }
-
 
 char *generate_hash(char *string)
 {
@@ -763,15 +779,48 @@ void print_menu()
 
 void view_sickness_info_action()
 {
-    printf("Enter Patient Id: ");
-    int id;
+  char patient_id[100];
+    PatientInfo *pi;
 
-    scanf("%d", &id);
+    printf("Enter Patient Id: ");
+    if (scanf("%s", patient_id) == 0 ||
+        (pi = find_single_record(PATIENT_INFO_RECORD, 1, patient_id)) == NULL)
+    {
+        printf("Invalid patient id");
+        return;
+    }
 
     if (
-        (id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
-        has_privilege(current_user->privilege_level, "READ_ANY_PATIENT_INFO_RECORD"))
+        (pi->id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_SICKNESS_INFO_RECORD")) ||
+        has_privilege(current_user->privilege_level, "READ_ANY_SICKNESS_INFO_RECORD"))
     {
+
+        char n;
+
+            printf("Press q to quit; Press n to print next record\n");
+        do
+        {
+            scanf("%c", &n);
+            if (n == 'n')
+            {
+                SicknessInfo *p;
+                p = find_all_records(SICKNESS_INFO_RECORD, 2, patient_id);
+                if (p == NULL)
+                {
+                    printf("No more records\n");
+                    return;
+                }
+                else
+                {
+                    printf("patient id: %d\ndoctor id: %d\ndate time: %s\nprescription: %s\n",
+                           p->patient_id,
+                           p->doctor_id,
+                           p->datetime,
+                           p->description);
+                }
+            }
+
+        } while (n != 'q');
     }
     else
     {
@@ -781,15 +830,48 @@ void view_sickness_info_action()
 
 void view_lab_test_prescription_action()
 {
-    printf("Enter Patient Id: ");
-    int id;
+   char patient_id[100];
+    PatientInfo *pi;
 
-    scanf("%d", &id);
+    printf("Enter Patient Id: ");
+    if (scanf("%s", patient_id) == 0 ||
+        (pi = find_single_record(PATIENT_INFO_RECORD, 1, patient_id)) == NULL)
+    {
+        printf("Invalid patient id");
+        return;
+    }
 
     if (
-        (id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
-        has_privilege(current_user->privilege_level, "READ_ANY_PATIENT_INFO_RECORD"))
+        (pi->id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_LAB_PRESCRIPTION_RECORD")) ||
+        has_privilege(current_user->privilege_level, "READ_ANY_LAB_PRESCRIPTION_INFO_RECORD"))
     {
+
+        char n;
+
+            printf("Press q to quit; Press n to print next record\n");
+        do
+        {
+            scanf("%c", &n);
+            if (n == 'n')
+            {
+                Prescription *p;
+                p = find_all_records(LAB_TEST_PRESCRIPTION_RECORD, 2, patient_id);
+                if (p == NULL)
+                {
+                    printf("No more records\n");
+                    return;
+                }
+                else
+                {
+                    printf("patient id: %d\ndoctor id: %d\ndate time: %s\nprescription: %s\n",
+                           p->patient_id,
+                           p->doctor_id,
+                           p->datetime,
+                           p->prescription);
+                }
+            }
+
+        } while (n != 'q');
     }
     else
     {
@@ -799,15 +881,48 @@ void view_lab_test_prescription_action()
 
 void view_drug_prescription_action()
 {
-    printf("Enter Patient Id: ");
-    int id;
+    char patient_id[100];
+    PatientInfo *pi;
 
-    scanf("%d", &id);
+    printf("Enter Patient Id: ");
+    if (scanf("%s", patient_id) == 0 ||
+        (pi = find_single_record(PATIENT_INFO_RECORD, 1, patient_id)) == NULL)
+    {
+        printf("Invalid patient id");
+        return;
+    }
 
     if (
-        (id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
-        has_privilege(current_user->privilege_level, "READ_ANY_PATIENT_INFO_RECORD"))
+        (pi->id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_DRUG_PRESCRIPTION_RECORD")) ||
+        has_privilege(current_user->privilege_level, "READ_ANY_DRUG_PRESCRIPTION_RECORD"))
     {
+
+        char n;
+
+            printf("Press q to quit; Press n to print next record\n");
+        do
+        {
+            scanf("%c", &n);
+            if (n == 'n')
+            {
+                Prescription *p;
+                p = find_all_records(DRUG_PRESCRIPTION_RECORD, 2, patient_id);
+                if (p == NULL)
+                {
+                    printf("No more records\n");
+                    return;
+                }
+                else
+                {
+                    printf("patient id: %d\ndoctor id: %d\ndate time: %s\nprescription: %s\n",
+                           p->patient_id,
+                           p->doctor_id,
+                           p->datetime,
+                           p->prescription);
+                }
+            }
+
+        } while (n != 'q');
     }
     else
     {
@@ -817,15 +932,28 @@ void view_drug_prescription_action()
 
 void view_patient_info_action()
 {
-    printf("Enter Patient Id: ");
-    int id;
+    char patient_id[100];
+    PatientInfo *pi;
 
-    scanf("%d", &id);
+    printf("Enter Patient Id: ");
+    if (scanf("%s", patient_id) == 0 ||
+        (pi = find_single_record(PATIENT_INFO_RECORD, 1, patient_id)) == NULL)
+    {
+        printf("Invalid patient id");
+        return;
+    }
 
     if (
-        (id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
+        (pi->id == current_user->id && has_privilege(current_user->privilege_level, "READ_SELF_PATIENT_INFO_RECORD")) ||
         has_privilege(current_user->privilege_level, "READ_ANY_PATIENT_INFO_RECORD"))
     {
+        printf("id: %d\nname: %s\naddress: %s\nphone: %s\ngender: %c\nbirthyear: %d\n",
+               pi->id,
+               pi->name,
+               pi->address,
+               pi->phone,
+               pi->gender,
+               pi->birth_year);
     }
     else
     {
@@ -837,6 +965,44 @@ void add_lab_test_prescription_action()
 {
     if (has_privilege(current_user->privilege_level, "CREATE_LAB_TEST_PRESCRIPTION_RECORD"))
     {
+        char patient_id[100];
+        int doctor_id = current_user->id;
+        char datetime[100];
+        char description[DESCRIPTION_LENGTH];
+
+        time_t rawtime;
+        struct tm *timeinfo;
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+
+        strcpy(datetime, asctime(timeinfo));
+        datetime[strlen(datetime) - 1] = '\0';
+        printf("Patient Id: ");
+
+        if (scanf("%s", patient_id) == 0 || find_single_record(PATIENT_INFO_RECORD, 1, patient_id) == NULL)
+        {
+            printf("Invalid patient id");
+            return;
+        }
+
+        fgets(description, DESCRIPTION_LENGTH, stdin);
+
+        printf("Prescription : ");
+        fgets(description, DESCRIPTION_LENGTH, stdin);
+
+        Prescription si;
+        si.id = get_last_id(LAB_TEST_PRESCRIPTION_RECORD);
+        si.doctor_id = doctor_id;
+        si.patient_id = atoi(patient_id);
+        strcpy(si.datetime, datetime);
+        description[strlen(description) - 1] = '\0';
+        strcpy(si.prescription, description);
+
+        char record[MAX_RECORD_LENGTH];
+        prescription_to_string(&si, record, LAB_TEST_PRESCRIPTION_RECORD);
+
+        append_record(LAB_TEST_PRESCRIPTION_RECORD, record);
+        printf("Record added successfully!\n");
     }
     else
     {
@@ -848,6 +1014,45 @@ void add_drug_prescription_action()
 {
     if (has_privilege(current_user->privilege_level, "CREATE_DRUG_PRESCRIPTION_RECORD"))
     {
+
+        char patient_id[100];
+        int doctor_id = current_user->id;
+        char datetime[100];
+        char description[DESCRIPTION_LENGTH];
+
+        time_t rawtime;
+        struct tm *timeinfo;
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+
+        strcpy(datetime, asctime(timeinfo));
+        datetime[strlen(datetime) - 1] = '\0';
+        printf("Patient Id: ");
+
+        if (scanf("%s", patient_id) == 0 || find_single_record(PATIENT_INFO_RECORD, 1, patient_id) == NULL)
+        {
+            printf("Invalid patient id");
+            return;
+        }
+
+        fgets(description, DESCRIPTION_LENGTH, stdin);
+
+        printf("Prescription : ");
+        fgets(description, DESCRIPTION_LENGTH, stdin);
+
+        Prescription si;
+        si.id = get_last_id(DRUG_PRESCRIPTION_RECORD);
+        si.doctor_id = doctor_id;
+        si.patient_id = atoi(patient_id);
+        strcpy(si.datetime, datetime);
+        description[strlen(description) - 1] = '\0';
+        strcpy(si.prescription, description);
+
+        char record[MAX_RECORD_LENGTH];
+        prescription_to_string(&si, record, DRUG_PRESCRIPTION_RECORD);
+
+        append_record(DRUG_PRESCRIPTION_RECORD, record);
+        printf("Record added successfully!\n");
     }
     else
     {
@@ -860,6 +1065,44 @@ void add_sickness_info_action()
 
     if (has_privilege(current_user->privilege_level, "CREATE_SICKNESS_INFO_RECORD"))
     {
+        char patient_id[100];
+        int doctor_id = current_user->id;
+        char datetime[100];
+        char description[DESCRIPTION_LENGTH];
+
+        time_t rawtime;
+        struct tm *timeinfo;
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+
+        strcpy(datetime, asctime(timeinfo));
+        datetime[strlen(datetime) - 1] = '\0';
+        printf("Patient Id: ");
+
+        if (scanf("%s", patient_id) == 0 || find_single_record(PATIENT_INFO_RECORD, 1, patient_id) == NULL)
+        {
+            printf("Invalid patient id");
+            return;
+        }
+
+        fgets(description, DESCRIPTION_LENGTH, stdin);
+
+        printf("Description : ");
+        fgets(description, DESCRIPTION_LENGTH, stdin);
+
+        SicknessInfo si;
+        si.id = get_last_id(SICKNESS_INFO_RECORD);
+        si.doctor_id = doctor_id;
+        si.patient_id = atoi(patient_id);
+        strcpy(si.datetime, datetime);
+        description[strlen(description) - 1] = '\0';
+        strcpy(si.description, description);
+
+        char record[MAX_RECORD_LENGTH];
+        sickness_info_to_string(&si, record);
+
+        append_record(SICKNESS_INFO_RECORD, record);
+        printf("Record added successfully!\n");
     }
     else
     {
@@ -869,8 +1112,78 @@ void add_sickness_info_action()
 
 void add_patient_action()
 {
+
     if (has_privilege(current_user->privilege_level, "CREATE_PATIENT_RECORD"))
     {
+        char user_id[100];
+        char name[MAX_ATTRIBUTE_SIZE];
+        char address[MAX_ATTRIBUTE_SIZE];
+        char phone[20];
+        char gender;
+        int birth_year;
+
+        printf("Patient User Account Id: ");
+        if (scanf("%s", user_id) == 0 ||
+            find_single_record(USER_RECORD, 1, user_id) == NULL)
+        {
+            printf("Non-existant user id\n");
+            return;
+        }
+        fgets(name, MAX_ATTRIBUTE_COUNT, stdin);
+        printf("Patient Name: ");
+        fgets(name, MAX_ATTRIBUTE_COUNT, stdin);
+
+        if ((strlen(name) > 0) && (name[strlen(name) - 1] == '\n'))
+        {
+            name[strlen(name) - 1] = '\0';
+        }
+
+        printf("Patient Address: ");
+
+        fgets(address, MAX_ATTRIBUTE_COUNT, stdin);
+        if ((strlen(address) > 0) && (address[strlen(address) - 1] == '\n'))
+        {
+            address[strlen(address) - 1] = '\0';
+        }
+
+        printf("Patient Phone: ");
+
+        fgets(phone, MAX_ATTRIBUTE_COUNT, stdin);
+        if ((strlen(phone) > 0) && (phone[strlen(phone) - 1] == '\n'))
+        {
+            phone[strlen(phone) - 1] = '\0';
+        }
+        printf("Gender (M or F): ");
+
+        if (scanf("%c", &gender) == 0 ||
+            (gender != 'M' && gender != 'F'))
+        {
+            printf("Invalid gender\n");
+            return;
+        }
+
+        printf("Patient Birth Year: ");
+
+        if (scanf("%d", &birth_year) == 0)
+        {
+            printf("Invalid year\n");
+            return;
+        }
+
+        PatientInfo pi;
+        pi.user_id = atoi(user_id);
+        pi.id = get_last_id(PATIENT_INFO_RECORD) + 1;
+
+        strcpy(pi.name, name);
+        strcpy(pi.address, address);
+        strcpy(pi.phone, phone);
+        pi.gender = gender;
+        pi.birth_year = birth_year;
+
+        char record[MAX_RECORD_LENGTH];
+        patient_info_to_string(&pi, record);
+        append_record(PATIENT_INFO_RECORD, record);
+        printf("Patient record created successfully!\n");
     }
     else
     {
@@ -900,7 +1213,6 @@ void add_user_action()
         scanf("%s", password);
 
         printf("user type (0 - Patient, 1 - Hostpial Staff, 2- Doctor)\n: ");
-        
 
         if ((scanf("%i", &user_type) == 0) || user_type < 0 || user_type > 2)
         {
